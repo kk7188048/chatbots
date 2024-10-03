@@ -1,40 +1,48 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const app = express();
-const port = 3000;
+require('dotenv').config();
 
-// Mock menu data with subcategories
-const menu = {
-    pizza: {
-        spicy: [
-            { name: 'Spicy Hawaiian', price: 10.99 },
-            { name: 'Spicy Pepperoni', price: 9.99 },
-        ],
-        nonSpicy: [
-            { name: 'Margherita', price: 8.99 },
-            { name: 'Pepperoni', price: 9.99 },
-        ],
-    },
-    pasta: {
-        cheesy: [
-            { name: 'Cheesy Carbonara', price: 12.99 },
-            { name: 'Creamy Alfredo', price: 13.99 },
-        ],
-        nonCheesy: [
-            { name: 'Bolognese', price: 13.99 },
-            { name: 'Aglio e Olio', price: 11.99 },
-        ],
-    },
-    // Add more categories here
-};
+// Connect to MongoDB
+mongoose.connect(process.env.MONGODB, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => console.log('MongoDB connected'))
+    .catch(err => console.error('MongoDB connection error:', err));
 
-app.get('/menu/:category/:subCategory', (req, res) => {
-    const category = req.params.category.toLowerCase();
-    const subCategory = req.params.subCategory.toLowerCase();
-    
-    const items = menu[category]?.[subCategory] || [];
-    res.json(items);
+// Define Menu and Subcategory Schemas
+const menuSchema = new mongoose.Schema({
+    category: String,
+    subCategory: String,
+    items: [
+        { name: String, price: Number }
+    ]
 });
 
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+const subcategorySchema = new mongoose.Schema({
+    category: String,
+    options: [String]
+});
+
+const Menu = mongoose.model('Menu', menuSchema);
+const SubCategory = mongoose.model('SubCategory', subcategorySchema);
+
+// Fetch menu items based on category only
+app.get('/menu/:category', async (req, res) => {
+    const { category } = req.params;
+    try {
+        const menu = await Menu.find({ category });
+        if (menu.length > 0) {
+            res.json(menu);
+        } else {
+            res.status(404).json({ message: 'Menu items not found for this category' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+});
+
+
+
+// Start the server
+app.listen(3000, () => {
+    console.log('Server is running on port 3000');
 });
