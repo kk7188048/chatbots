@@ -1,86 +1,114 @@
 const axios = require('axios');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { MongoClient } = require('mongodb');
+const { Menu, itemSchema, menuSchema } = require('./src/seedmenu');
+
 require('dotenv').config();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const client = new MongoClient(process.env.MONGODB);
+const db = client.db('restaurant');
 
-// Function to interact with Gemini AI
-async function getMenuItemsFromChat(userInput) {
-    const prompt = `You are a friendly restaurant chatbot named ChefBot. 
-    Respond naturally as if you're helping a customer at a restaurant.
-    If the user asks for pizza or pasta, guide them to choose from available options, like spicy or non-spicy for pizza, cheesy or non-cheesy for pasta.
-    Always respond in a conversational, engaging way.
-    The user said: "${userInput}". How do you respond?`;
-
-    const response = await model.generateContent(prompt);
+function calculateLevenshteinDistance(str1, str2) {
+    const matrix = [];
     
-    const answer = response?.content?.trim() || "I didn't catch that. Could you please clarify?";
-    return answer;
-}
-
-// Function to fetch menu data based on category and subcategory
-async function fetchMenuItems(category, subCategory) {
-    try {
-        const response = await axios.get(`http://localhost:3000/menu/${category}/${subCategory}`);
-        return response.data;
-    } catch (error) {
-        console.error('Error fetching menu items:', error);
-        return []; // Return an empty array in case of error
+    for (let i = 0; i <= str1.length; i++) {
+        matrix[i] = [i];
     }
+    
+    for (let j = 0; j <= str2.length; j++) {
+        matrix[0][j] = j;
+    }
+
+    for (let i = 1; i <= str1.length; i++) {
+        for (let j = 1; j <= str2.length; j++) {
+            if (str1[i - 1] === str2[j - 1]) {
+                matrix[i][j] = matrix[i - 1][j - 1]; 
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    Math.min(matrix[i][j - 1] + 1,
+                              matrix[i - 1][j] + 1)
+                );
+            }
+        }
+    }
+
+    return matrix[str1.length][str2.length];
 }
 
-// Function to handle user input with dynamic conversation flow
-async function handleUserInput() {
-    const readline = require('readline');
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout
-    });
+function calculateStringSimilarity(str1, str2) {
+    const distance = calculateLevenshteinDistance(str1, str2);
+    const maxLength = Math.max(str1.length, str2.length);
+    
+    return maxLength === 0 ? 1 : (maxLength - distance) / maxLength;
+}
 
-    rl.question('Hey! Welcome to ChefBot’s menu. What would you like to have today? (pizza or pasta): ', async (userInput) => {
-        const geminiResponse = await getMenuItemsFromChat(userInput);
+async function getChatResponse(prompt) {
+    const response = await model.generateContent(prompt);
+    const candidates = response.response.candidates;
+    
+    for (const candidate of candidates) {
+        return candidate.content.parts[0].text;
+    }
+    
+    return "I didn't catch that. Could you please clarify?";
+}
 
-        // Basic category detection (Pizza or Pasta)
-        let category = '';
-        let subCategory = '';
-        
-        if (userInput.toLowerCase().includes('pizza')) {
-            category = 'pizza';
-            
-            // Human-like transition to ask for preferences
-            rl.question('Great choice! Do you prefer your pizza spicy or more on the mild side? (spicy/non-spicy): ', async (spicyInput) => {
-                subCategory = spicyInput.toLowerCase().includes('spicy') ? 'spicy' : 'nonSpicy';
-                const menuItems = await fetchMenuItems(category, subCategory);
-                displayMenuItems(category, menuItems);
-                rl.close();
-            });
-        } else if (userInput.toLowerCase().includes('pasta')) {
-            category = 'pasta';
-            
-            rl.question('Yum! Would you like your pasta to be extra cheesy or a little lighter? (cheesy/non-cheesy): ', async (cheesyInput) => {
-                subCategory = cheesyInput.toLowerCase().includes('cheesy') ? 'cheesy' : 'nonCheesy';
-                const menuItems = await fetchMenuItems(category, subCategory);
-                displayMenuItems(category, menuItems);
-                rl.close();
-            });
-        } else {
-            // Fallback to Gemini’s response
-            console.log(geminiResponse || "I didn't quite understand. Could you let me know if you're in the mood for pizza or pasta?");
-            rl.close();
+async function fetchMenuFromDB() {
+    const menuItem = await Menu.findOne();
+    console.log(menuItem.items);
+    
+    return menuItem ? Array.from(menuItem.items.entries()).flatMap(([key, value]) => value) : [];
+}
+
+function findClosestMenuItem(customerItem, menu) {
+    const customerItemLower = customerItem.toLowerCase();
+    let bestMatch = null;
+    let highestConfidence = 0;
+
+    menu.forEach(menuItem => {
+        const menuItemLower = menuItem.name.toLowerCase();
+        const similarity = calculateStringSimilarity(customerItemLower, menuItemLower);
+        console.log(menuItem.name, similarity);
+
+        if (similarity > highestConfidence) {
+            highestConfidence = similarity;
+            bestMatch = menuItem.name;
         }
     });
+
+    return highestConfidence > 0.8 ? bestMatch : null;
 }
 
-// Function to display menu items in a human-friendly way
-function displayMenuItems(category, menuItems) {
-    if (menuItems.length > 0) {
-        console.log(`Here are our ${category} options for you! Let me know what looks good:`);
-        menuItems.forEach(item => console.log(`- ${item.name}: $${item.price.toFixed(2)}`));
-    } else {
-        console.log(`Hmm, it seems like we’re out of options for ${category} at the moment. Could I suggest something else?`);
-    }
+async function handleCustomerInput(customerInput) {
+    let staticPrompt = `
+      Myra is a friendly, knowledgeable female waiter specializing in customer interactions at Xero Degrees. 
+      She serves continental and Italian dishes and communicates in Hindi for conversation, using English for item names.
+    `;
+
+   const menuItems = await fetchMenuFromDB();
+   console.log(staticPrompt);
+
+   // Find items containing the customer input
+   const matchedItems = menuItems.filter(menuItem => 
+       menuItem.name.toLowerCase().includes(customerInput.toLowerCase())
+   );
+
+   // Check if any items matched
+   if (matchedItems.length > 0) {
+       const itemNames = matchedItems.map(item => item.name).join(', ');
+       staticPrompt += ` Customer is looking for '${customerInput}'. Here are some items I found: ${itemNames}.`;
+   } else {
+       staticPrompt += " Mujhe sahi se samajh nahi aaya. Kripya item ka naam fir se boliye.";
+   }
+
+   const response = await getChatResponse(staticPrompt);
+   return response;
 }
 
-// Start the chatbot interaction
-handleUserInput();
+// Example of usage with a customer input
+handleCustomerInput("Pizza").then(response => {
+   console.log(response); // Myra's generated response
+});
