@@ -106,13 +106,9 @@ async function seedDatabase() {
     // Insert the new menu data
     const menu = new Menu(menuData);
     await menu.save();
-    console.log('Menu data inserted successfully');
   } catch (err) {
     console.error('Error seeding the database:', err);
-  } finally {
-    // Close the connection
-    await mongoose.connection.close();
-  }
+  } 
 }
 
 // Run the database seeding function
