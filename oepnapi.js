@@ -9,12 +9,10 @@ require('dotenv').config();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-// MongoDB Client
 const client = new MongoClient(process.env.MONGODB);
 let db;
 
-// Connect to MongoDB
-// Connect to MongoDB
+
 async function connectToDatabase() {
     try {
       await mongoose.connect(process.env.MONGODB, {
@@ -28,13 +26,10 @@ async function connectToDatabase() {
     }
   }
   
-  // Fetch menu items from MongoDB
   async function fetchMenuFromDB() {
     try {
-      // Wait for the database connection to be established
       await connectToDatabase();
   
-      // Check if the connection is established
       if (mongoose.connection.readyState === 1) {
         const menuItem = await Menu.find({}, 'foodName')    
         console.log(menuItem);
@@ -49,8 +44,6 @@ async function connectToDatabase() {
       return [];
     }
   }
-
-// Get AI response from the model
 async function getChatResponse(prompt) {
     console.log("prompt", prompt);
     try {
@@ -168,44 +161,44 @@ async function getChatResponse(prompt) {
 //     const response = await getChatResponse(staticPrompt);
 //     return response;
 // }
-let conversationState = {
-    stage: 'greeting', // Other stages: 'ordering', 'confirmation', etc.
-    currentOrder: [],
-    confirmed: false
-};
+// let conversationState = {
+//     stage: 'greeting', // Other stages: 'ordering', 'confirmation', etc.
+//     currentOrder: [],
+//     confirmed: false
+// };
 
-// Update conversation state based on user's input
-function updateConversationState(input) {
-    if (conversationState.stage === 'greeting') {
-        conversationState.stage = 'ordering';
-    } else if (conversationState.stage === 'ordering' && input) {
-        conversationState.currentOrder.push(input);
-        conversationState.stage = 'confirmation';
-    } else if (conversationState.stage === 'confirmation') {
-        conversationState.confirmed = input.toLowerCase().includes("yes");
-        conversationState.stage = 'complete';
-    }
-}
+// // Update conversation state based on user's input
+// function updateConversationState(input) {
+//     if (conversationState.stage === 'greeting') {
+//         conversationState.stage = 'ordering';
+//     } else if (conversationState.stage === 'ordering' && input) {
+//         conversationState.currentOrder.push(input);
+//         conversationState.stage = 'confirmation';
+//     } else if (conversationState.stage === 'confirmation') {
+//         conversationState.confirmed = input.toLowerCase().includes("yes");
+//         conversationState.stage = 'complete';
+//     }
+// }
 
-// Generate a question or response based on the current conversation state
-async function generateDynamicResponse(input) {
-    if (conversationState.stage === 'greeting') {
-        return "Welcome! What would you like to order today?";
-    } else if (conversationState.stage === 'ordering') {
-        updateConversationState(input);
-        const menuItems = await fetchMenuFromDB();
-        return `You've ordered: ${conversationState.currentOrder.join(', ')}. Would you like anything else?`;
-    } else if (conversationState.stage === 'confirmation') {
-        updateConversationState(input);
-        if (conversationState.confirmed) {
-            return `Thank you! Your order for ${conversationState.currentOrder.join(', ')} has been confirmed. Would you like to add a drink?`;
-        } else {
-            return `Got it, what else would you like to add?`;
-        }
-    } else if (conversationState.stage === 'complete') {
-        return "Your order is complete! Thank you for ordering with us!";
-    }
-}
+// // Generate a question or response based on the current conversation state
+// async function generateDynamicResponse(input) {
+//     if (conversationState.stage === 'greeting') {
+//         return "Welcome! What would you like to order today?";
+//     } else if (conversationState.stage === 'ordering') {
+//         updateConversationState(input);
+//         const menuItems = await fetchMenuFromDB();
+//         return `You've ordered: ${conversationState.currentOrder.join(', ')}. Would you like anything else?`;
+//     } else if (conversationState.stage === 'confirmation') {
+//         updateConversationState(input);
+//         if (conversationState.confirmed) {
+//             return `Thank you! Your order for ${conversationState.currentOrder.join(', ')} has been confirmed. Would you like to add a drink?`;
+//         } else {
+//             return `Got it, what else would you like to add?`;
+//         }
+//     } else if (conversationState.stage === 'complete') {
+//         return "Your order is complete! Thank you for ordering with us!";
+//     }
+// }
 
 async function handleCustomerInput(customerInput = "") {
     let staticPrompt = `
@@ -267,7 +260,6 @@ If you cannot find a close match, respond:
         }
     });
 
-    // Split input into individual food items
     const foodKeywords = normalizedInput.split(/,\s*|and\s+/); 
     console.log("Food Keywords:", foodKeywords);
     
@@ -286,7 +278,6 @@ If you cannot find a close match, respond:
     console.log("Matched Items:", matchedItems); // Log matched items
 
     if (matchedItems.length > 0) {
-        // Fetch food items for each matched item from the database
         const allFoodItems = [];
 
         for (const foodName of matchedItems) {
@@ -298,7 +289,6 @@ If you cannot find a close match, respond:
             }
         }
 
-        // Log the combined food items
         console.log("All Food Items:", allFoodItems.map(item => item.foodItems).flat().map(item => item.name));
         
         const all = allFoodItems.map(item => item.foodItems).flat().map(item => item.name);
@@ -319,7 +309,6 @@ If you cannot find a close match, respond:
     return response;
 }
 
-// Prompt user for input
 async function promptUser() {
     const greetingResponse = await handleCustomerInput();
     console.log("Myra's greeting:", greetingResponse);
@@ -340,7 +329,6 @@ async function promptUser() {
     });
 }
 
-// Start the chatbot application
 async function startChatbot() {
     await connectToDatabase();
     await promptUser();
