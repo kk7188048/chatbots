@@ -11,6 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google-cloud/language": "^6.5.0",
     "@google/generative-ai": "^0.20.0",
     "axios": "^1.7.7",
     "compromise": "^14.14.0",
